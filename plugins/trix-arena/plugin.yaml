@@ -1,0 +1,45 @@
+# Trix Arena plugin manifest.
+#
+# User-facing name: Trix Arena. Technical id: trix-arena.
+# A deterministic tournament engine for Trix Agent: the /arena command
+# spins up N independent LLM participants on the same task, each with a
+# different strategy card, then runs a single-elimination bracket
+# (attack -> defend -> judge) until one solution survives.
+#
+# Fork origin: Jakeschincariol/arena-skill (MIT). The upstream skill
+# (skills/arena/) stays untouched; this plugin is a superset built on
+# top of a shared tournament core (plugins/trix-arena/arena/).
+
+id: trix-arena
+name: Trix Arena
+version: 0.1.0
+description: >-
+  Tournament arena for Trix Agent. Run /arena with a task and N independent
+  LLM participants get the same task with different strategy cards, then
+  attack, defend and judge each other in a single-elimination bracket until
+  one solution survives. Deterministic, JSON-state, no participant shell or
+  filesystem access.
+author:
+  name: Rafail
+license: MIT
+homepage: https://github.com/Jakeschincariol/arena-skill
+repository: https://github.com/Jakeschincariol/arena-skill
+keywords:
+  - arena
+  - tournament
+  - multi-agent
+  - trix
+commands:
+  - name: arena
+    description: Run or manage a Trix Arena tournament
+    argument-hint: "[ping | plan | start | status | result | cancel] [args]"
+    handler: commands.arena_command
+tools:
+  - name: arena_ping
+    description: Health check. Always answers "pong".
+    input_schema: "schemas.PING_SCHEMA"
+    handler: tools.arena_ping
+paths:
+  skills: skills/trix-arena
+  data: data
+  engine: arena

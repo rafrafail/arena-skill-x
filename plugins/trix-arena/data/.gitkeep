@@ -1,0 +1,6 @@
+# Trix Arena data directory
+
+Runtime data for the plugin (card decks, rubric copies, packaging
+artifacts) lives here. Tournament run state is NOT stored in the
+repository: runs write to an explicit directory chosen by the user, never
+to the current working directory by default (see PLAN.md stage 1).
