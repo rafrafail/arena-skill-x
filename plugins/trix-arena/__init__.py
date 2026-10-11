@@ -26,10 +26,10 @@ def register(context) -> None:
     ``arena_ping`` tool. The context API is intentionally narrow here; later
     stages will extend registration with the real tournament tools.
     """
-    from . import commands
+    from . import commands, tools
 
     context.register_command("arena", commands.arena_command)
-    context.register_tool("arena_ping", commands.arena_ping)
+    context.register_tool("arena_ping", tools.arena_ping)
 
 
 def _compat_register(context) -> None:
