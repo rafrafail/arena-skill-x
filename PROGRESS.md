@@ -89,3 +89,46 @@
 5. Диспетчеризовать `arena-reviewer` для gate-check этапа 0.
 
 **Сообщение владельцу:** сессии factory-пайплайна не имеют shell-доступа — до тех пор, пока host gatekeeper не выполнит шаги 1–5, КАЖДЫЙ следующий шифт будет останавливаться на этом же месте. Никакой диспетчеризацией изнутри sandbox'а это не разблокировать. Это решение должно быть принято на стороне драйвера/хоста (владельцем), а не внутри шифта.
+
+---
+
+## 2026-10-12 (shift 6, brigadier: deer-flow) — Этап 0 — статус: **DONE**
+
+- **Этап:** 0 — базовый plugin-каркас.
+- **Статус:** done (host gatekeeper completed gate + commit; shift 6 records completion).
+
+**Что сделано (host gatekeeper, после shift 5):**
+- Гейт пройден: `python3 -m compileall plugins` — зелёный; `pytest` — зелёный (авто-коммиты gatekeeper'а: `19bff0690dc8847f7242180fb1aa3eed9e1bded3` — `feat(arena): stage 0 plugin skeleton`, и последующие `gates(arena): auto-commit after shift N`).
+- Коммит этапа: `19bff0690dc8847f7242180fb1aa3eed9e1bded3` на ветке `feat/trix-arena-plugin`.
+- В репозитории зафиксированы: `plugins/trix-arena/` (10 файлов), `run_compileall.py`, `test_compile.py`, `test_ping.py` — все в индексе и закоммичены.
+- Код не менялся с shift 4: `/arena ping` → `pong`; `tools.arena_ping` валидирует по схеме; структура по плану.
+
+**Тесты/гейты:** compileall зелёный, pytest зелёный (подтверждено авто-коммитами gatekeeper'а в reflog). Коммит этапа: `19bff0690dc8847f7242180fb1aa3eed9e1bded3`.
+
+**Блокер:** нет — этап завершён. Следующий шаг: диспетчеризация `arena-reviewer` для gate-check этапа 0 (по процедуре шаг 2).
+
+---
+
+## 2026-10-12 (shift 6, reviewer: arena-reviewer) — Этап 0 — статус: **PASS**
+
+- **Этап:** 0 — базовый plugin-каркас (gate-check reviewer'а по процедуре шаг 2).
+- **Статус:** PASS — структура, команда `/arena ping`, регистрация tool, manifest и тесты соответствуют плану этапа 0.
+
+**Что проверено (только чтение файлов; shell/compileall/pytest у reviewer'а в этой сессии НЕТ — код-ревью):**
+1. Прочитаны: PLAN.md (раздел «Этап 0») и PROGRESS.md (записи shift 2, 3, 4, 5, 6).
+2. Структура `plugins/trix-arena/` — все 10 файлов по плану на диске: `plugin.yaml`, `__init__.py`, `schemas.py`, `commands.py`, `tools.py`, `arena/__init__.py`, `data/.gitkeep`, `skills/trix-arena/SKILL.md`, `tests/__init__.py`, `tests/test_stage0.py` (листинг каталога + построчное чтение каждого файла).
+3. `/arena ping` отвечает ровно `pong`: commands.py — константа `PONG = "pong"`; `arena_command` маршрутизирует `parts[0].lower() == "ping"` → `_handle_ping(rest)` → `return PONG`; дополнительные аргументы игнорируются (`["ping", "extra"]` → `pong`); пустой/неизвестный subcommand → usage-сообщение (НЕ «pong»); запланированные subcommand'ы (plan/start/status/result/cancel) → явное «not implemented».
+4. Регистрация tool корректна: `__init__.py` — `context.register_tool("arena_ping", tools.arena_ping)`, т.е. ссылка именно на `tools.arena_ping` (НЕ `commands.arena_ping`) — фикс shift 4 на месте; команда: `context.register_command("arena", commands.arena_command)`.
+5. Валидация payload через schemas.py: `tools.arena_ping(data)` вызывает `schemas.validate_tool_input("arena_ping", data)`; `PING_SCHEMA` — object, опциональный `payload` (string|null), `additionalProperties: False`; нарушение схемы → структурная ошибка `{"pong": False, "error": ...}` без необработанного исключения; неизвестный tool → KeyError.
+6. `plugin.yaml` корректно ссылается на точки входа: команда `arena` → `handler: commands.arena_command`; tool `arena_ping` → `handler: tools.arena_ping`, `input_schema: "schemas.PING_SCHEMA"`. Оба модуля/функции существуют, manifest совпадает с фактической регистрацией в `__init__.py`.
+7. Тесты `tests/test_stage0.py` содержательные: точный «pong» (+ extra args), usage/«not implemented» для прочих subcommand'ов, tool ping (default / с payload / отказ на unknown keys), schema validation (валидно/невалидно/unknown tool), регистрация через FakeContext (зарегистрированные handlers реально вызываются: `ctx.commands["arena"](["ping"]) == "pong"`, `ctx.tools["arena_ping"]()["pong"] is True`), manifest-проверки (id/name, literal-строки `handler: commands.arena_command` и `handler: tools.arena_ping`), наличие `skills/trix-arena/SKILL.md` и каталога `data/`.
+8. Код-ревью компилируемости: во всех модулях только stdlib-импорты (json/typing/pathlib/importlib/unittest), синтаксических проблем не найдено; importlib-bootstrap в `tests/__init__.py` корректно регистрирует пакет `trix_arena` несмотря на hyphen-имя каталога `trix-arena`.
+
+**Почему вердикт PASS:** каждый пункт чеклиста gate-check этапа 0 подтверждён построчным чтением кода; расхождений с планом не найдено. Честная оговорка: `python3 -m compileall plugins` и `pytest` reviewer лично НЕ запускал (в сессии нет shell) — зелёность гейта принята по записи shift 6 (host gatekeeper, авто-коммиты, коммит этапа `19bff0690dc8847f7242180fb1aa3eed9e1bded3`); код-ревью противоречий с заявленной зелёностью не нашло.
+
+**Мелкие заметки для следующих этапов (не блокируют PASS):**
+- `commands.py` содержит мёртвую legacy-функцию `arena_ping(payload: Optional[str])` с docstring «Tool handler» — она нигде не зарегистрирована и не упомянута в plugin.yaml; именно она была источником бага регистрации в shift 4. Рекомендуется удалить в этапе 2, чтобы исключить повторную путаницу commands/tools.
+- `tests/__init__.py` дублирует почти весь тест-сьют из `tests/test_stage0.py` (PingTests/RegisterTests/ManifestTests) и одновременно несёт importlib-bootstrap пакета. Рекомендация: вынести bootstrap в `conftest.py` и оставить `__init__.py` минимальным — иначе при некоторых конфигурациях раннера тесты задвоятся, а верхнеуровневый `from trix_arena.schemas import validate_tool_input` в `test_stage0.py` зависит от того, что `tests/__init__.py` исполнится раньше (хрупко при `--import-mode=importlib` или прямом запуске файла).
+- `plugin.yaml`: `input_schema: "schemas.PING_SCHEMA"` — строковая ссылка; на этапе 2 сверить с реальным контрактом загрузчика плагинов (как резолвятся такие ссылки).
+- `run_compileall.py`, `test_compile.py`, `test_ping.py` в корне — вне-плановые гейт-харнесы; решить их судьбу на этапе 1/2 (оставить или удалить).
+- `arena/__init__.py` — пока пустая заготовка ядра (`__version__ = "0.1.0"`); соответствует плану, наполнение — этап 1 (characterization tests ДО рефакторинга upstream).
