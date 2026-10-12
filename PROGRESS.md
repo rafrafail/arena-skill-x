@@ -132,3 +132,32 @@
 - `plugin.yaml`: `input_schema: "schemas.PING_SCHEMA"` — строковая ссылка; на этапе 2 сверить с реальным контрактом загрузчика плагинов (как резолвятся такие ссылки).
 - `run_compileall.py`, `test_compile.py`, `test_ping.py` в корне — вне-плановые гейт-харнесы; решить их судьбу на этапе 1/2 (оставить или удалить).
 - `arena/__init__.py` — пока пустая заготовка ядра (`__version__ = "0.1.0"`); соответствует плану, наполнение — этап 1 (characterization tests ДО рефакторинга upstream).
+
+---
+
+## 2026-10-12 (shift 7, brigadier: deer-flow) — Этап 1 — статус: **BLOCKED (2 dispatch timeouts) — HALT**
+
+- **Этап:** 1 — общее турнирное ядро (первый этап без done+PASS; этап 0 закрыт done+PASS в shift 6).
+- **Статус:** blocked — два подряд тайм-аута диспетчеризаций; по правилу «стейдж заблокирован два раза подряд» смена остановлена.
+
+**Определение этапа:** перечитаны PLAN.md и PROGRESS.md. Первая стадия без done+PASS — Этап 1 (последняя запись: shift 6 reviewer PASS для этапа 0). Условие шага 2 (ревью непроверенного done-этапа) не выполнено — очередь за шагом 3: диспетчеризация `arena-dev` на этап 1.
+
+**Диспетчеризации (использовано 2 из 3; диспетчеризация 3 НЕ производилась):**
+1. **Диспетчеризация 1/3 (`arena-dev`, «Execute stage 1 per PLAN.md»)** — **TIMEOUT после 5400 с**. Записи в PROGRESS.md работник НЕ добавил (проверено grep: записей этапа 1/смена 7 нет). Оставил на диске значительный объём незакоммиченного материала (см. ниже).
+2. **Диспетчеризация 2/3 (retry, `arena-dev`, изменённый план: «verify + complete», не переделывать с нуля; явно перечислено, что уже прочитано бригадиром, и что требуется: досмотреть `/home/rafail/projects/trix-arena/tests/test_bracket.py`, при необходимости точечно дотестировать, добавить запись в PROGRESS.md)** — **TIMEOUT после 5400 с**. Записи в PROGRESS.md снова нет (grep до и после).
+
+**Оценка частичного состояния (бригадир, только чтение; гейты НЕ запускались — в песочнице нет shell):**
+- `plugins/trix-arena/arena/core.py` (~800 строк) — полное stdlib-ядро, извлечённое из upstream `skills/arena/bracket.py`: константы совпадают с upstream (DEFAULT_AGENTS=100, QUICK_AGENTS=16, DEFAULT_WAVE=10, ROOT=".arena", STATE_FILE="arena.json", PHASES, CALLS_PER_MATCH=5, WEIGHTS 30/25/15/20/10, CURRENT_STATE_SCHEMA_VERSION=2); `ArenaError`; `load_strategies` (валидация, дефолт через `__file__` → upstream `skills/arena/strategies.json`); `combo_count`; `deal` (детерминированный seeded-раздачник, distinct (r,w,s)-тройки, распределение ±1, edge-colouring с фолбэком); `agent_ids` (a001…); `bracket_sizes` (100→50→25→13→7→4→2→1); `new_state` (state_schema_version:2 + upstream-совместимый "version":1, относительные пути — абсолютных путей и записи в cwd нет); `_pair_round`/`_open_round` (seeded-пары, bye — минимальному по byes, приоритет разных reasoning, коронование при 1 живом); `record`/`advance`/`current_round`; `weighted_total`/`decide` (клампинг, tie-break по атакам/correctness/pick); `extract_json`; `collect`; `phase_jobs`/`missing_jobs`; `save_state`/`load_state` (относительный dir, атомарная запись); **`migrate` v1→v2 + `ensure_current_schema`** — миграционный интерфейс по чеклисту этапа 1; `plan_rows`/`plan_totals`.
+- `plugins/trix-arena/arena/__init__.py` — re-export пакетного API, `__version__ = "0.2.0"`.
+- `plugins/trix-arena/tests/test_upstream_characterization.py` — characterization-тесты upstream `bracket.py` ДО рефакторинга (первый пункт чеклиста этапа 1): импорт как в upstream `test_bracket.py`, пиннинг констант и поведения.
+- `plugins/trix-arena/tests/test_core.py` — 67 тестов: стратегии/deal/edge-colouring, ids/bracket, new_state (поля, относительные пути, карточки, baseline), паринг/bye/match-id, скоринг/decide (все tie-break цепочки), state I/O (roundtrip, атомарность, migrate v1→v2, идемпотентность), advance (элиминация, bye, финал), jobs (spawn/attack/defend/judge/final, missing), plan, **симуляция 100 участников → ровно 1 победитель (гейт этапа 1)** + вариант с судьями + stale-dir после перемещения.
+- НЕ прочитано бригадиром: `/home/rafail/projects/trix-arena/tests/test_bracket.py` (происхождение не подтверждено: upstream или создан работником; upstream-тесты нельзя менять/удалять).
+
+**Блокер:** оба воркера умерли по тайм-ауту исполнения (5400 с), не успев добавить запись в PROGRESS.md; работа выглядит существенно завершённой, но НЕ верифицирована (гейты в песочнице запустить нельзя) и НЕ закоммичена. Правило «два тайм-аута подряд» → стоп смены.
+
+**Следующие шаги (host gatekeeper, вне песочницы):**
+1. Прогнать гейты на частичной работе: `python3 -m compileall plugins`; `python3 -m pytest plugins/trix-arena/tests/` (+ upstream `tests/test_bracket.py`, предварительно выяснив его происхождение).
+2. Зелёные гейты → закоммитить как завершение этапа 1; красные → минимальные фиксы (судя по чтению, основные кандидаты: возможные расхождения мелких деталей поведения с upstream-pinning-тестами).
+3. После коммита — диспетчеризация `arena-reviewer` для gate-check этапа 1 в следующей смене.
+
+**Заметки для ревьюера этапа 1 (не блокеры):** дефолт `load_strategies` резолвится через `__file__` в repo-root `skills/arena/strategies.json` — валидно, но связывает плагин с раскладкой репо; мёртвый legacy `arena_ping` в commands.py (заметка reviewer'а shift 6) — на этап 2; судьба корневых `run_compileall.py`/`test_compile.py`/`test_ping.py` — на этап 1/2.

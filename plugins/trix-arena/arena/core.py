@@ -244,7 +244,7 @@ def new_state(
                 "workflow": dict(data["workflows"][w]),
                 "strategy": dict(data["strategies"][s]),
             },
-            "solution": _spawn_out(run_dir, aid),
+            "solution": _spawn_out_rel(aid),
             "alive": True,
             "eliminated_in": None,
             "eliminated_by": None,
@@ -274,6 +274,11 @@ def _spawn_out(run_dir: str, aid: str) -> str:
     return os.path.join(run_dir, "r0", f"{aid}.md")
 
 
+def _spawn_out_rel(aid: str) -> str:
+    """Relative path for state storage."""
+    return os.path.join("r0", f"{aid}.md")
+
+
 def _attack_out(run_dir: str, rnd: int, mid: str, attacker: str) -> str:
     return os.path.join(run_dir, f"r{rnd}", f"{mid}.{attacker}.attack.md")
 
@@ -284,6 +289,11 @@ def _defense_out(run_dir: str, rnd: int, mid: str, aid: str) -> str:
 
 def _revised_out(run_dir: str, rnd: int, mid: str, aid: str) -> str:
     return os.path.join(run_dir, f"r{rnd}", f"{mid}.{aid}.solution.md")
+
+
+def _revised_out_rel(rnd: int, mid: str, aid: str) -> str:
+    """Relative path for state storage."""
+    return os.path.join(f"r{rnd}", f"{mid}.{aid}.solution.md")
 
 
 def _verdict_out(run_dir: str, rnd: int, mid: str) -> str:
@@ -441,7 +451,7 @@ def advance(state: Dict[str, Any]) -> List[str]:
         for aid in (m["a"], m["b"]):
             rev = _revised_out(run_dir, rd["n"], m["id"], aid)
             if _has_output(rev):
-                state["agents"][aid]["solution"] = rev
+                state["agents"][aid]["solution"] = _revised_out_rel(rd["n"], m["id"], aid)
         survivors.append(m["winner"])
 
     if rd["bye"]:
@@ -727,11 +737,13 @@ def load_state(run_dir: str, base_dir: Optional[str] = None) -> Dict[str, Any]:
     with open(path, encoding="utf-8") as fh:
         state = json.load(fh)
 
-    # Resolve relative dir if base_dir provided
-    if base_dir and not os.path.isabs(state.get("dir", "")):
-        state["dir"] = os.path.join(base_dir, state["dir"])
-    elif not state.get("dir"):
+    # Resolve relative dir: against base_dir when provided, else against run_dir
+    stored_dir = state.get("dir", "")
+    if not stored_dir:
         state["dir"] = run_dir
+    elif not os.path.isabs(stored_dir):
+        root = base_dir if base_dir else run_dir
+        state["dir"] = os.path.join(root, stored_dir)
 
     return state
 
