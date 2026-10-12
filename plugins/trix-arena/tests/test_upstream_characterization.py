@@ -15,7 +15,7 @@ import unittest
 
 # Import upstream exactly like test_bracket.py does
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 SKILL = os.path.join(REPO, "skills", "arena")
 sys.path.insert(0, SKILL)
 

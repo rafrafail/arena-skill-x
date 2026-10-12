@@ -61,13 +61,14 @@ class StrategiesTest(unittest.TestCase):
         for n in (16, 50, 100):
             dealt = C.deal(n, "seed", self.data)
             self.assertEqual(len(dealt), n)
-            rs = [r for r, _, _ in dealt]
-            ws = [w for _, w, _ in dealt]
-            ss = [s for _, _, s in dealt]
-            for counts in (rs, ws, ss):
-                maxc, minc = max(counts), min(counts)
-                # Some may be 0 if n < dimension size
-                non_zero = [c for c in counts if c > 0]
+            from collections import Counter
+            for dim_idx, size in ((0, len(self.data["reasoning"])),
+                                  (1, len(self.data["workflows"])),
+                                  (2, len(self.data["strategies"]))):
+                counts = Counter(t[dim_idx] for t in dealt)
+                used = [counts.get(i, 0) for i in range(size)]
+                # deal() balances values: any two used values differ by at most 1
+                non_zero = [c for c in used if c > 0]
                 if len(non_zero) > 1:
                     self.assertLessEqual(max(non_zero) - min(non_zero), 1)
 
@@ -196,10 +197,11 @@ class NewStateTest(unittest.TestCase):
     def test_new_state_baseline_final(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = C.new_state(1, "seed", self.data, tmp, has_baseline=True)
-            # n=1 -> champion immediately
+            # n=1 -> champion immediately; with a baseline present the final is
+            # still the baseline until it is beaten in a match (upstream truth).
             self.assertEqual(state["champion"], "a001")
-            self.assertEqual(state["final"]["X"], "champion")
-            self.assertEqual(state["final"]["Y"], "baseline")
+            self.assertEqual(state["final"]["X"], "baseline")
+            self.assertEqual(state["final"]["Y"], "champion")
 
 
 class PairingTest(unittest.TestCase):
@@ -525,9 +527,11 @@ class JobsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             state = C.new_state(8, "seed", self.data, tmp)
             jobs = C.phase_jobs(state, "attack")
-            self.assertEqual(len(jobs), 16)  # 2 per match * 4 matches
+            # 1 attack job per participant (8 agents) — upstream truth, not 2/match
+            self.assertEqual(len(jobs), 8)
             jobs = C.phase_jobs(state, "defend")
-            self.assertEqual(len(jobs), 16)
+            # 1 defend job per participant — upstream truth
+            self.assertEqual(len(jobs), 8)
             jobs = C.phase_jobs(state, "judge")
             self.assertEqual(len(jobs), 4)
 
@@ -568,7 +572,8 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(t["agents"], 100)
         self.assertEqual(t["rounds"], 7)
         self.assertEqual(t["calls"], 595)
-        self.assertEqual(t["waves"], 43)
+        # upstream truth: 100 agents -> 70 waves (25+13+8+5+3+3+3)
+        self.assertEqual(t["waves"], 70)
 
 
 class TournamentSimulationTest(unittest.TestCase):
@@ -675,7 +680,8 @@ class TournamentSimulationTest(unittest.TestCase):
                     with open(os.path.join(tmp2, f), "wb") as fh:
                         fh.write(blob)
             loaded = C.load_state(tmp2)
-            self.assertEqual(loaded["dir"], tmp2)
+            # dir restored relative (same normalization as LoadStateTest)
+            self.assertEqual(os.path.normpath(loaded["dir"]), os.path.normpath(tmp2))
             self.assertEqual(len(loaded["agents"]), 16)
 
 
