@@ -55,6 +55,8 @@ from .core import (
     plan_totals,
 )
 
+from . import orchestrator
+
 __all__ = [
     "DEFAULT_AGENTS",
     "QUICK_AGENTS",
