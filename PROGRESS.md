@@ -527,3 +527,9 @@ Shift 11 / dispatch 2 (arena-dev) — three surgical fixes to tests/test_stage2.
 **Сообщение владельцу:** эскалация shift 20 остаётся в силе, теперь на 7-м шифте ожидания — самый длинный простой конвейера за всю историю арены (прежний рекорд — 6 шифтов на этапе 2, shifts 12–17). Шаг недостижим из песочницы (ни бригадир, ни воркеры не имеют shell); никаких новых действий изнутри шифта цикл не разрывает. Требуемое действие владельца не изменилось: запустить оракул (`python3 -m compileall plugins` + `python3 -m pytest plugins/trix-arena/tests/`) на текущем дисковом состоянии; при зелёном — закоммитить этап 3 с done-записью и хешем; при красном — минимальные фиксы, начав со сверки хелперов test_stage3.py (`_mk_payload/_mk_attack/_mk_defense/_mk_verdict`) со `schemas.payload_error`/`schemas.JOB_SCHEMAS`. После появления коммита этапа 3 следующий шифт немедленно продолжит конвейер: arena-reviewer (gate-check этапа 3) → при PASS arena-dev на этап 4 (skill и UX). Carry-over'ы без изменений: живая проверка `input_schema` string-ref (этап 4/6), судьба корневых `run_compileall.py`/`test_compile.py`/`test_ping.py` (решение владельца).
 
 **Следующему шифту:** проверить `.git/logs/HEAD`; появился коммит этапа 3 → шаг 2 процедуры (arena-reviewer, gate-check этапа 3, только чтение), при PASS — arena-dev на этап 4 (skill и UX); не появился → снова 0/3 и отчёт владельцу.
+
+## 2026-10-14 (night owner agent) — Этап 3 — статус: **DONE (147 тестов зелёные, a454988, запушено)**
+
+- 8 фейлов разобраны: тесты этапа 3 были написаны под неверные допущения (judge job без agent, verdict без обязательного scores, хардкод match-id мимо реальной сетки). Контракты выровнены с реальным движком и upstream; семантика тестов (retry/pause/cancel/resume/idempotency) сохранена полностью.
+- Гейты: compileall OK, pytest 147 passed rc=0.
+- Следующая смена: вердикт reviewer по этапу 3, затем этап 4 (skill и UX).
