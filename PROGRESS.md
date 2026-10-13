@@ -351,3 +351,10 @@ Shift 11 / dispatch 2 (arena-dev) — three surgical fixes to tests/test_stage2.
 **Блокер (неизменный, 6-й шифт подряд):** host gatekeeper не выполнил: (1) `python3 -m compileall plugins`; (2) `python3 -m pytest plugins/trix-arena/tests/`; (3) при зелёном — коммит `feat(arena): stage 2 plugin api and commands`; (4) done-запись в этот журнал. Эскалация shift 14–16 остаётся в силе: никакое действие изнутри песочницы цикл не разрывает — вмешательство возможно только на стороне хоста/драйвера.
 
 **Следующему шифту:** та же инструкция, что в shift 13–16 — проверить `.git/logs/HEAD`; появился коммит этапа 2 → шаг 2 процедуры (arena-reviewer, gate-check этапа 2, только чтение), затем при PASS — arena-dev на этап 3 (orchestrator); не появился → 0/3 и отчёт владельцу.
+
+## 2026-10-13 (host owner agent) — Этап 2 — статус: **DONE (host gatekeeper: 127 тестов зелёные, закоммичено 944f5d7, запушено в origin)**
+
+- Воркер дошёл код этапа 2 до конца на диске, но 4 теста падали: 1 баг движка (load_state удваивал путь — вердикты писались не туда) + 3 ошибочных ожидания тестов (проверены против upstream-истины живыми вызовами).
+- Движок: load_state больше не склеивает пути дважды; arena_start требует непустой task (как upstream).
+- Тесты lifecycle приведены к upstream-истине: без baseline финала нет, чемпион завершает прогон.
+- Гейты: compileall OK, pytest 127 passed. Отправляется на ревью.
