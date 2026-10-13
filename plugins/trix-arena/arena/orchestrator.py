@@ -743,6 +743,17 @@ def run(
             save(state)
             return summary()
         core.collect(state)  # decide every open match from its verdict file
+        # A corrupt verdict is quarantined by collect() and becomes missing.
+        # Pause now rather than silently regenerating evidence in this run.
+        still_missing = core.missing_jobs(core.phase_jobs(state, "judge"))
+        if still_missing:
+            _fail(
+                rec,
+                "judge verdicts still missing after the judge phase: %s"
+                % ", ".join(job["id"] for job in still_missing),
+            )
+            save(state)
+            return summary()
         round_obj = core.current_round(state)
         if round_obj and all(match["winner"] for match in round_obj["matches"]):
             core.advance(state)  # close round, open next / crown champion

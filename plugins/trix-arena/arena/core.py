@@ -714,6 +714,7 @@ def save_state(state: Dict[str, Any], base_dir: Optional[str] = None) -> None:
     actual_dir = state["dir"]
     path = os.path.join(actual_dir, STATE_FILE)
     tmp = path + ".tmp"
+    os.makedirs(actual_dir, exist_ok=True)
 
     # Temporarily swap dir for serialization if base_dir provided
     original_dir = state["dir"]
