@@ -533,3 +533,77 @@ Shift 11 / dispatch 2 (arena-dev) — three surgical fixes to tests/test_stage2.
 - 8 фейлов разобраны: тесты этапа 3 были написаны под неверные допущения (judge job без agent, verdict без обязательного scores, хардкод match-id мимо реальной сетки). Контракты выровнены с реальным движком и upstream; семантика тестов (retry/pause/cancel/resume/idempotency) сохранена полностью.
 - Гейты: compileall OK, pytest 147 passed rc=0.
 - Следующая смена: вердикт reviewer по этапу 3, затем этап 4 (skill и UX).
+
+## 2026-10-14 (arena-reviewer, shift 26) — Этап 3 — вердикт: **PASS**
+
+- **Способ проверки:** только чтение файлов — shell в песочнице нет, гейт-команды (compileall, pytest) НЕ запускались; «147 passed / compileall OK» принято по журнальной записи владельца (2026-10-14), не воспроизведено. В этой смене прочитаны целиком/почти целиком и сверены между собой: `arena/orchestrator.py` (все диапазоны 1–785), `arena/core.py`, `schemas.py`, `tests/test_stage3.py`, `arena/__init__.py`, `tests/conftest.py`, `plugin.yaml`, `PLAN.md` (этап 3). Ревью выполнялось по текущему состоянию на диске (после host-правок и ре-алайна тестов), не по описанию shift 18.
+
+- **(a) JSON-схемы solve/attack/defense/judge — подтверждено.** `schemas.py`: `SOLVE_SCHEMA` (required `solution`), `ATTACK_SCHEMA` (`attack`), `DEFENSE_SCHEMA` (`defense` + `revised_solution`), `JUDGE_SCHEMA` (required `winner` + `scores`; опционально `reason`/`survived`/`standing`/`fixed`; echo `idempotency_key` разрешён, лишние ключи запрещены); `JOB_SCHEMAS` покрывает все kind из `core.phase_jobs` (competitor/attacker/defender/judge/final, финал делит judge-схему с winner x/y); `payload_error` гоняет object-type, required, unknown-keys, scalar-types. Требование `scores` стыкуется с upstream `core.decide` (пустые scores → выбор судьи). Пиннится тестом `SchemaNoRetryTest.test_payload_kind_mismatch_is_schema_error`.
+
+- **(b) волны + retry только transport/schema — подтверждено.** `orchestrator.py`: `MAX_RETRIES = 2` (:106, ≤3 попыток) и `RETRYABLE_CLASSES = (JobTransportError, JobSchemaError)` (≈:130–132 — координаты разъехались со старыми записями :102/:128, файл правился владельцем после shift 18); в `run_phase` цикл попыток только для retryable-классов, исчерпание → `failures[class=transport|schema, attempts=MAX_RETRIES+1]` + `_fail` → статус paused + `save` + stop (≈:606–630); прочие Exception → class="backend", первая попытка, без записей в `retries` (≈:637–649). Волны: `effective_wave` (state["wave"] или DEFAULT_WAVE, минимум 1) + `wave_batches` (≈:277–305). Наблюдение (не блокер): диспетчер в `run_phase` пока последовательный — волновая структура задана и готова под параллельный исполнитель этапа 4; pause/cancel проверяются на границе каждого job (≈:601–603), что тесты и пиннят.
+
+- **(c) idempotency key на каждый job + сохранение — подтверждено.** `idempotency_key` (≈:246–266): sha256 от детерминированных полей job (kind/round/match/agent/opponent/outputs), без абсолютных путей, времени и рандома; echo-несовпадение → `JobSchemaError` (retryable). Re-runs ничего не переписывают: `ensure_prompt` сохраняет существующий непустой промпт; `core.missing_jobs` исключает job с непустыми outputs. Сохранение: `save(state)` после КАЖДОГО успешного job (run_phase ≈:650–655) и на границах старта/паузы/отмены. Пиннится `CrashResumeTest` (байт-в-байт сохранение выводов) и `DoneNoOpTest` (arena.json байт-идентичен после повторного run).
+
+- **(d) pause/cancel/resume — подтверждено.** Статусы idle/running/paused/cancelled/done (:93–106, TERMINAL :103). pause запрещён из терминальных (ArenaError), повторный — no-op; cancel запрещён после done, готовые выходы сохраняются; resume: paused→running, идемпотентен для running (восстановление после краша), из терминальных/idle → ArenaError. `run()`: no-op при done (ранний return, состояние не трогает), отказ при paused/cancelled и при уже готовом финальном результате. Всё пиннится `PauseResumeTest` / `CancelTerminalTest` (run() после cancel поднимает ArenaError, свежий backend: 0 вызовов) / `DoneNoOpTest` / `CrashResumeTest`.
+
+- **Гейт (падения не теряют готовые jobs, нет двойных победителей) — подтверждено чтением переписанной владельцем версии `tests/test_stage3.py`.** Контракт выровнен с реальным движком: judge-задания без `agent` (только match/a/b), верdict обязан нести `scores` (пустой объект валиден), match-id из реальной сетки (для 4 агентов seed "seed": r1-m01 = a001 vs a003), полная лестница 20 job'ов (has_baseline=True). `TransportRetryTest`: 4 spawn пережили transport-крах, failures/attempts = MAX_RETRIES+1, вывод неудачного job отсутствует. `CrashResumeTest.test_crash_reload_resume_no_reexecution`: KeyboardInterrupt (BaseException — не глотается и не ретраится) → reload → resume → все 20 job'ов выполнены ровно по разу, предкрашные выводы байт-в-байт, чемпион найден, winners == ожидаемым. `SingleWinnerTest.test_judge_served_once_collect_only_after_all_judged`: при упавшем втором судье ОБА winner'а round-1 ещё None (collect не вызывался, пока не все судьи отработали — в `run()` collect после judge-фазы только при пустом `missing_jobs`), после resume второй судья отработан ровно 1 раз, первый верdict не переписан. Двойной победитель структурно исключён: `collect` → `core.record` (winner ∈ {a,b}), `advance` требует всех winner'ов перед закрытием раунда, чемпион коронуется только при одном живом агенте.
+
+- **Регрессия этапов 0–2 (лёгкий спот-чек):** `plugin.yaml` цел (6 инструментов, команды, ссылки на commands.py/schemas.py/orchestrator.py); `tests/conftest.py` (path-shim, ensure_trix_arena_importable) цел; `arena/__init__.py` экспортирует core + orchestrator, dual-layout импорт в orchestrator (:48–57) работает в обеих раскладках; `core.__all__` полон (включая save_state/load_state/migrate); `schemas.py` сохраняет все 6 TOOL_SCHEMAS этапа 2. `commands.py`/`tools.py` в этой смене не читались (этап 3 их не касался по журналу; присутствие подтверждено листингом каталога).
+
+- **Замечания (не блокеры):** (1) диспетчер последовательный — параллельность волн отложена на этап 4 (см. (b)); (2) журнальные координаты строк до host-правок устарели (MAX_RETRIES теперь :106, не :102) — старым записям доверять нельзя, перечитывать файлы; (3) version 0.1.0 в plugin.yaml остаётся до этапа 6 (решение этапа 2).
+
+- **Ограничение вердикта:** гейт-команды недоступны из песочницы — соответствие чек-листу этапа 3 подтверждено сличением кода, схем и тестов при чтении; факт зелёного pytest принят по done-записи владельца. Файлы вне `/home/rafail/projects/trix-arena/plugins` и `PROGRESS.md` не изменялись.
+
+---
+
+## 2026-10-14 (arena-dev, shift 26) — Этап 4: skill и UX — статус: **done (файлы записаны; гейты шифтом НЕ запускались — их выполняет host gatekeeper)**
+
+### Что сделано
+
+1. **`plugins/trix-arena/skills/trix-arena/SKILL.md` — переписан.** Frontmatter не тронут (name/description/argument-hint — как на этапе 0). Тело заменено с заглушки («Stage 0 status», «do not try to use yet») на настоящий документ:
+   - «When to invoke the arena» — триггеры + анти-триггеры (когда арену запускать НЕ надо: переписать/факт/правка; участникам нужны инструменты/файлы/веб);
+   - «Choosing a mode» — таблица режимов: quick `--agents 16` (4 раунда, 91 вызов, 16 волн), full/дефолт 100 (7 раундов, 595 вызовов, 70 волн), custom N/W/S; правила: `--wave` меняет только батчи (не число вызовов), `--seed` фиксирует сетку, кап по карточкам (`agents must be between 1 and <cap>`), `--agents 1` = 1 вызов без матчей;
+   - «The canonical task package» — 4 части самодостаточной задачи (objective / inputs inline / success criteria / constraints) + пример `is_balanced` + антипример «make it better»;
+   - «Preflight: know the cost before you start» — `/arena plan` перед дорогим запуском; пример вывода для 16; арифметика: N spawn-вызовов + ровно 5 вызовов на матч (2 attack + 2 defend + 1 judge), сетка паддится до степени двойки, нечётные раунды дают bye, +1 вызов финала против baseline сверх превью; числа пересчитаны из `core.plan_rows`/`core.plan_totals` (100, wave 10 → 7 раундов / 595 вызовов / 70 волн; 16 → 4 / 91 / 16), форма тула `arena_plan → {"ok", "plan": {agents, rounds, calls, waves, rows}}`;
+   - «Driving a run: the six subcommands» — таблица всех 6 подкоманд с флагами; дефолты `--run`→LATEST и `--dir`→`.arena`; формат run-id (slug seed'а + timestamp); примеры вывода ping/start/status/result/cancel дословно по форматам `commands.py` (включая `jobs (missing/total)`, `finished: yes`, `collected verdicts`, `arena cancel: ... (purged: no)`); стиль ошибок `arena <sub>: <message>` (strict-парсер, `--agents` целое, usage при пустом task); тул-эквиваленты arena_ping/plan/start/status/result/cancel и контракт `{"ok": true|false, ...}` без исключений;
+   - «Executing the jobs» — контракт `orchestrator.run(state, backend)`: фазы, волновые батчи, ретраи только transport/schema ≤2 (3 попытки), исчерпание → paused + failures, атомарный save после каждой задачи, идемпотентность (echo-ключи, re-run не переписывает), pause/cancel на границах задач, cancel терминален, resume для paused/краша; **честно указано**: встроенного раннера с LLM-бэкендом в плагине ещё нет — wiring отложен до backend-интеграции, сигнатура backend — в докстринге модуля;
+   - «The final answer» — обязательный формат ответа пользователю: (1) победитель (champion + collected-строки), (2) счёт (строка `final: ...` verbatim; веса рубрики correctness 30 / completeness 25 / specificity 15 / robustness 20 / clarity 10, шкала 0–100; без baseline — счёт победного матча), (3) пережитые атаки (survived-списки и причины судьи per-match в `<dir>/arena.json`), (4) ограничения; `final: pending` → дождаться orchestrator;
+   - «Limits of the arena» — честные ограничения (safe-MVP без инструментов, судья-LLM эвристичен, single-elimination, seed не фиксирует сэмплинг модели, cancel терминален, purge без undo).
+2. **`plugins/trix-arena/tests/test_stage4.py` — НОВЫЙ, 10 тестов**, пинят SKILL.md к реальной поверхности (гейт «новичок запускает без чтения исходников»): frontmatter + триггеры описания целы; заглушка stage 0 удалена (и `pong` задокументирован); все 8 обязательных секций на месте; числа preflight == `core.plan_totals(DEFAULT_AGENTS|16, DEFAULT_WAVE)` построчно (whole-word, чтобы «5950» не сошла за «595»); пин утверждения «волна не меняет calls» (calls одинаковы для wave 1/3/10/100); все 6 подкоманд упомянуты как `/arena <sub>` и все 6 имён тула из `schemas.TOOL_SCHEMAS` присутствуют; финальный ответ покрывает winner/score/survived/limitations и все 5 критериев рубрики. Импорты через bootstrap conftest (`from trix_arena.arena import core`), путей нет, `Path(__file__).resolve().parents[1]`.
+
+### Изменённые файлы
+- `M plugins/trix-arena/skills/trix-arena/SKILL.md` (тело переписано, frontmatter сохранён)
+- `A plugins/trix-arena/tests/test_stage4.py` (новый)
+
+Upstream-файлы (LICENSE, README.md, корневые skills/, tests/) не тронуты; `arena/core.py` и `arena/orchestrator.py` не изменялись; `.env`/ключи не тронуты.
+
+### Гейты для host gatekeeper (в этом порядке)
+1. `python3 -m compileall plugins`
+2. `python3 -m pytest` (147 зелёных с этапа 3 + 10 новых test_stage4 → ожидается **157 passed**)
+Коммиты после зелёного: `docs(arena): stage 4 skill и UX-документация` (SKILL.md) и `test(arena): stage 4 gate-тесты skill-документа` (tests/test_stage4.py). Затем dispatch arena-reviewer на gate-check этапа 4.
+
+### Переносы / открытые пункты (не блокеры этапа 4)
+- Встроенный runner (`arena_run` + реальный LLM backend) сознательно НЕ добавлен: это не «мелкое добавление» (нужны конфиг/новый тул/возможно ключи), по инструкции смены задокументирован существующий orchestrator-API; решение по wiring — за владельцем (этап 6 / backend-интеграция).
+- Живая проверка `input_schema` string-ref (перенос с этапов 2–3) — остаётся на этап 6.
+- Легаси-файлы в корне (`run_compileall.py`, `test_compile.py`, `test_ping.py`) — ждут решения владельца.
+
+### Следующему шифту
+Host gatekeeper: прогнать оба гейта выше; при зелёном — два коммита (docs(arena)/test(arena)) и dispatch arena-reviewer (gate-check этапа 4, только чтение). Если pytest красный по `test_stage4.py` — чинить тест и/или SKILL.md (не трогая core/orchestrator). После PASS reviewer'а — этап 5 (тесты по плану).
+
+## 2026-10-14 (brigadier, shift 26) — итог смены
+
+Статус: **этап 3 закрыт (done+PASS), этап 4 выполнен arena-dev (done, гейты на host).**
+
+Хронология: (1) подтверждено разрешение блокера этапа 3 — хост-коммиты `a454988d` (test-contract alignment + engine fixes, гейты зелёные, 147 passed) + `eebbeac7` (done-запись); (2) dispatch 1/3 — `arena-reviewer`, gate-check этапа 3: вердикт **PASS** (PROGRESS.md:537) — все чек-пойнты (a)–(d) + гейт подтверждены чтением текущего состояния `orchestrator.py`/`core.py`/`schemas.py`/`test_stage3.py` с честной оговоркой «ничего не запускал»; (3) dispatch 2/3 — `arena-dev`, этап 4 (skill и UX): переписан `skills/trix-arena/SKILL.md` (8 секций: триггеры/режимы/canonical task package/preflight/6 подкоманд/контракт orchestrator/final answer/limits), добавлен `tests/test_stage4.py` (10 тестов, пин SKILL.md к `core.plan_totals` и `schemas.TOOL_SCHEMAS`); бюджет 2/3, третий dispatch не использован.
+
+Ожидание от host gatekeeper: `python3 -m compileall plugins` → `python3 -m pytest` (ожидается **157 passed** = 147 + 10), затем коммиты `docs(arena)` + `test(arena)` (сообщения предложены в записи arena-dev). Следующая смена: reviewer gate-check этапа 4 → PASS → этап 5.
+
+Переносы (без изменений): live-проверка `input_schema` string-ref (этап 6); wiring встроенного LLM-раннера — решение владельца (запись arena-dev этапа 4, отложено осознанно); судьба корневых legacy-файлов `run_compileall.py`/`test_compile.py`/`test_ping.py`; bump версии плагина (этап 6).
+
+---
+
+## 2026-10-14 (night owner agent) — Этап 4 — статус: **DONE (157 тестов зелёные, skill+UX написаны воркером; 1 строка теста починена: QUICK_AGENTS — int-пресет, не список)**
+
+- Воркер написал skills/trix-arena/SKILL.md (пособие новичка: preflight-стоимость, 6 подкоманд, финальный отчёт) и UX-тексты; тесты пиняют секции и числа плана (91/16, 595/70 — сходятся с движком).
+- Гейты: compileall OK, pytest 157 passed rc=0.
+- Следующая смена: вердикт reviewer по этапу 4, затем этап 5 (расширенные тесты).
