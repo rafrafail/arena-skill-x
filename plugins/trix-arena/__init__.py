@@ -21,15 +21,23 @@ PLUGIN_NAME = "Trix Arena"
 def register(context) -> None:
     """Register the plugin with the Trix Agent plugin context.
 
-    Stage 0 skeleton: wires the ``/arena`` command to
+    Wires the ``/arena`` command to
     :func:`plugins.trix_arena.commands.arena_command` and registers the
-    ``arena_ping`` tool. The context API is intentionally narrow here; later
-    stages will extend registration with the real tournament tools.
+    six plugin tools: the ``arena_ping`` health check (stage 0) and the
+    five tournament tools of stage 2 — ``arena_plan`` (cost preview),
+    ``arena_start`` (create a run), ``arena_status`` (inspect a run),
+    ``arena_cancel`` (cancel/purge a run) and ``arena_result``
+    (collect judge verdicts).
     """
     from . import commands, tools
 
     context.register_command("arena", commands.arena_command)
     context.register_tool("arena_ping", tools.arena_ping)
+    context.register_tool("arena_plan", tools.arena_plan)
+    context.register_tool("arena_start", tools.arena_start)
+    context.register_tool("arena_status", tools.arena_status)
+    context.register_tool("arena_cancel", tools.arena_cancel)
+    context.register_tool("arena_result", tools.arena_result)
 
 
 def _compat_register(context) -> None:

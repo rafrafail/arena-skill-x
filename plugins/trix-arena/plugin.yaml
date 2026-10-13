@@ -39,6 +39,36 @@ tools:
     description: Health check. Always answers "pong".
     input_schema: "schemas.PING_SCHEMA"
     handler: tools.arena_ping
+  - name: arena_plan
+    description: >-
+      Preview tournament cost for a participant count: rounds, LLM calls
+      and waves. Pure calculation, no state.
+    input_schema: "schemas.PLAN_SCHEMA"
+    handler: tools.arena_plan
+  - name: arena_start
+    description: >-
+      Create a tournament run: deal strategy cards to N participants and
+      open round 1. Marks the run as LATEST.
+    input_schema: "schemas.START_SCHEMA"
+    handler: tools.arena_start
+  - name: arena_status
+    description: >-
+      Inspect a run: alive participants, current round, unrecorded matches
+      and pending jobs per phase. Read-only.
+    input_schema: "schemas.STATUS_SCHEMA"
+    handler: tools.arena_status
+  - name: arena_cancel
+    description: >-
+      Cancel a run (optionally delete its directory with purge=true) and
+      clear the LATEST pointer if it referenced that run.
+    input_schema: "schemas.CANCEL_SCHEMA"
+    handler: tools.arena_cancel
+  - name: arena_result
+    description: >-
+      Collect judge verdicts present on disk (core.collect) and report the
+      current champion, the final judgement and per-match outcomes.
+    input_schema: "schemas.RESULT_SCHEMA"
+    handler: tools.arena_result
 paths:
   skills: skills/trix-arena
   data: data

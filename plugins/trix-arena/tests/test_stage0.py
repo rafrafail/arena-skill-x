@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
 
 from trix_arena.schemas import validate_tool_input
@@ -17,17 +19,30 @@ class PingTests(unittest.TestCase):
     def test_unknown_subcommand_gives_usage(self):
         from trix_arena.commands import arena_command
 
-        for args in ([], ["nonsense"], ["plan"]):
+        for args in ([], ["nonsense"]):
             with self.subTest(args=args):
                 out = arena_command(args)
                 self.assertNotEqual(out, "pong")
                 self.assertIn("ping", out)
 
-    def test_planned_subcommands_not_implemented(self):
+    def test_no_known_subcommand_reports_not_implemented(self):
         from trix_arena.commands import arena_command
 
-        out = arena_command(["start", "do the thing"])
-        self.assertIn("not implemented", out)
+        # Every registered subcommand is implemented since stage 2; none of
+        # them may answer with the old "not implemented" stub. The whole
+        # loop runs in a tmp cwd because "start" really creates a run.
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = os.getcwd()
+            os.chdir(tmp)
+            try:
+                for args in ([], ["nonsense"], ["ping"], ["plan"],
+                             ["start", "do the thing"], ["status"],
+                             ["result"], ["cancel"]):
+                    with self.subTest(args=args):
+                        out = arena_command(args)
+                        self.assertNotIn("not implemented", out)
+            finally:
+                os.chdir(prev)
 
     def test_tool_ping(self):
         from trix_arena.tools import arena_ping

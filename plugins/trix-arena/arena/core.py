@@ -737,13 +737,22 @@ def load_state(run_dir: str, base_dir: Optional[str] = None) -> Dict[str, Any]:
     with open(path, encoding="utf-8") as fh:
         state = json.load(fh)
 
-    # Resolve relative dir: against base_dir when provided, else against run_dir
+    # Resolve relative dir: against base_dir when provided, else try run_dir,
+    # but never double-join: a stored dir like "runs/arena-x" loaded from
+    # run_dir "runs/arena-x" must stay "runs/arena-x", not "runs/arena-x/runs/arena-x".
     stored_dir = state.get("dir", "")
     if not stored_dir:
         state["dir"] = run_dir
     elif not os.path.isabs(stored_dir):
         root = base_dir if base_dir else run_dir
-        state["dir"] = os.path.join(root, stored_dir)
+        candidate = os.path.join(root, stored_dir)
+        if os.path.isfile(os.path.join(candidate, STATE_FILE)):
+            state["dir"] = candidate
+        elif os.path.isfile(os.path.join(stored_dir, STATE_FILE)):
+            # stored dir is already correct relative to cwd — use as-is
+            state["dir"] = stored_dir
+        else:
+            state["dir"] = candidate
 
     return state
 
