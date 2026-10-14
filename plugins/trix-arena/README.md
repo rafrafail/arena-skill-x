@@ -115,8 +115,8 @@ plugins/trix-arena/
 - Чемпион — единственный живой участник последнего раунда; проигравший в
   каждом матче фиксируется в состоянии (`eliminated_in`, `eliminated_by`) и
   больше не играет.
-- Оценка вердикта — взвешенная сумма по осям correctness/robustness/
-  efficiency/clarity/style с весами **30/25/15/20/10** (`WEIGHTS`); решения
+- Оценка вердикта — взвешенная сумма по осям correctness/completeness/
+  specificity/robustness/clarity с весами **30/25/15/20/10** (`WEIGHTS`); решения
   хранятся на диске дословно (verbatim).
 
 ## Детерминизм и гарантии
